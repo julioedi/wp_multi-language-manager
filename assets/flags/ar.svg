@@ -1,0 +1,13 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_2181_1708)">
+<rect width="512" height="512" fill="white"/>
+<rect width="512" height="168" fill="black"/>
+<rect y="168" width="512" height="176" fill="#007A3D"/>
+<rect x="-468" y="256" width="512" height="512" transform="rotate(-45 -468 256)" fill="#D80027"/>
+</g>
+<defs>
+<clipPath id="clip0_2181_1708">
+<rect width="512" height="512" fill="white"/>
+</clipPath>
+</defs>
+</svg>
