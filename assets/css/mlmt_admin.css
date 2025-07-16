@@ -1,0 +1,119 @@
+:root{
+    --adminbar:32px;
+    --adminfooter: 65px;
+}
+#wpcontent{
+    padding: 0;
+}
+#wpbody-content{
+    box-sizing: border-box;
+    height: calc(100dvh - var(--adminbar));
+}
+#root{
+    height: 100%;
+    display: grid;
+    grid-template-rows: 80px 1fr;
+    grid-template-areas: 
+    "header header"
+    "aside main"
+    ;
+    grid-template-columns: 360px 1fr;
+}
+#root,
+#root * {
+    box-sizing: border-box;
+}
+#header{
+    background: #fff;
+    grid-area: header;
+}
+#main{
+    grid-area: main;
+}
+#aside{
+    grid-area: aside;
+    padding:24px;
+    gap:16px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    position: relative;
+}
+
+#aside input{
+    width: 100%;
+}
+
+
+/* width */
+#root ::-webkit-scrollbar {
+  width: 20px;
+  background: #ffffff01;
+}
+
+/* Track */
+#root ::-webkit-scrollbar-track {
+  border-radius: 10px;
+}
+ 
+/* Handle */
+#root ::-webkit-scrollbar-thumb {
+  background: #ff000001; 
+  border-radius: 10px;
+  border: 6px solid #ffffff01;
+  transition: 0.3s ease all;
+  cursor: pointer;
+  box-shadow: inset  0 0 12px 24px color-mix(in srgb, white 80%, currentColor);
+}
+
+/* Handle on hover */
+#root ::-webkit-scrollbar-thumb:hover {
+  box-shadow: inset  0 0 12px 24px color-mix(in srgb, white 50%, currentColor);
+}
+
+
+#flaglist{
+    position: absolute;
+    top: 72px;
+    left: 24px;
+    right: 24px;
+    bottom: 24px;
+    background: #fff;
+    border-radius: 12px;
+    overflow: auto;
+    padding: 12px;
+    display: grid;
+    flex: 1;
+    align-content: flex-start;
+    align-items: flex-start;
+}
+#flaglist svg{
+    width: 3em;
+    height: 3em;
+    border-radius: 32px;
+}
+.flag_item{
+    display: flex;
+    align-items: center;
+    gap:12px;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+}
+.flag_item:not(:last-of-type){
+    border-bottom: 1px solid #e5e5e5;
+    padding: 12px 0;
+}
+.flag{
+    display: flex;
+}
+.flag_item .names{
+    line-height: 1;
+    flex:1;
+}
+.flag_item .names .name{
+    font-weight: bold;
+}
+.flag_item .names .native_name{
+    font-size: 12px;
+}

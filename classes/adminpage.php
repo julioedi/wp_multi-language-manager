@@ -12,15 +12,95 @@ class LangLanguagesAdmin
 
         $prefix = LangTable::$prefix;
         // Procesar formulario si se envió
-        if (isset($_POST["{$prefix}_add_language_nonce"]) && wp_verify_nonce($_POST["{$prefix}_add_language_nonce"], "{$prefix}_add_language")) {
-            self::handle_form_submission();
-        }
+        $nonce = "{$prefix}_update_language_nonce";
+        $field = "{$prefix}_update_language";
 
         // Obtener idiomas actuales
         $languages = LangLanguagesTable::get_all_languages();
 
         // Mostrar formulario y lista
+
+        wp_nonce_field($nonce, $field);
         self::render_form($languages);
+    }
+
+    public static function update_table_data()
+    {
+
+        $prefix = LangTable::$prefix;
+        // Procesar formulario si se envió
+        $nonce = "{$prefix}_update_language_nonce";
+        if (!isset($_POST["nonce"]) || !wp_verify_nonce($_POST["nonce"], $nonce)) {
+            wp_send_json_error(array(
+                "code" => 401,
+                "message" => __("Unauthorized", mlmt_lang),
+                "post" => $_POST
+            ), 401);
+            die();
+        }
+        if (!isset($_POST["code"]) || !is_string($_POST["code"])) {
+            wp_send_json_error(array(
+                "code" => 400,
+                "message" => __("Language code missing", mlmt_lang)
+            ), 400);
+            die();
+        }
+
+        $code = $_POST["code"];
+        LangLanguagesTable::get_all_languages();
+        if (isset(LangLanguagesTable::$allLanguageKeys[$code])) {
+            wp_send_json_error(array(
+                "code" => 409,
+                "message" => __("Language already exists", mlmt_lang)
+            ), 409);
+            die();
+        }
+        
+        if (isset($_POST["delete"])) {
+            $error = null;
+            try {
+                $deleted = LangLanguagesTable::remove_language($code);
+            } catch (\Exception $e) {
+                $error = $e;
+                $deleted = false;
+            }
+            if ($deleted === false) {
+                wp_send_json_error(array(
+                    "code" => 409,
+                    "message" => __("Something get wrong", mlmt_lang),
+                    "error" =>$error
+                ), 409);
+                die();
+            }
+            wp_send_json(array(
+                "code" => 200,
+                "message" => __("Language deleted", mlmt_lang),
+                "error" => $deleted
+            ), 200);
+
+            die();
+        }
+
+
+        try {
+            $added = LangLanguagesTable::add_language($code);
+        } catch (\Exception $e) {
+            $added = false;
+        }
+
+        if ($added === false) {
+            wp_send_json_error(array(
+                "code" => 409,
+                "message" => __("Language already exists", mlmt_lang)
+            ), 409);
+            die();
+        }
+        wp_send_json(array(
+            "code" => 200,
+            "message" => __("Language added", mlmt_lang),
+            "added" => $added
+        ), 200);
+        die();
     }
 
     public static $translation_laguages = array();
@@ -80,164 +160,6 @@ class LangLanguagesAdmin
 
     protected static function render_form($languages)
     {
-        require_once(ABSPATH . 'wp-admin/includes/translation-install.php');
-        wp_enqueue_style("admin_language", mlmt_url . "/assets/css/admin.css");
-
-        $list_languages    = \get_available_languages();
-        $translations = self::get_translation_laguages();
-
-        $locale = self::$locale;
-        $languages_codes = array_map(function ($lang) {
-            return $lang->code;
-        }, $languages);
-
-
-        $locale = get_locale();
-        $translations_menu = array(
-            "en_US" => array(
-                "key" => "en_US",
-                "value" => self::get_tranlation_name()
-            ),
-        );
-        // if ($locale !== "en_US" &&  !in_array("en_US", $languages_codes)) {
-            // $translations_menu["en_US"] = array(
-            //     'language' => 'en_US',
-            //     'version' => wp_get_wp_version(),
-            //     'updated' => current_time('mysql'),
-            //     'english_name' => 'English (United States)',
-            //     'native_name' => 'English',
-            //     'package' => 'https://downloads.wordpress.org/translation/core/6.8.1/en_US.zip',
-            //     'iso' => array(
-            //         1 => 'en',
-            //         2 => 'eng'
-            //     ),
-            //     'strings' => array(
-            //         'continue' => 'Continue'
-            //     )
-            // );
-        // }
-        foreach ($translations as $key => $value) {
-
-            //prevent to add website default language
-            // if ($key === $locale) {
-            //     continue;
-            // }
-            // //exclude already installed languages
-            // if (in_array($key, $languages_codes)) {
-            //     continue;
-            // }
-            $translations_menu[$key] = array(
-                "key" => $key,
-                "value" => self::get_tranlation_name($key, $value)
-            );
-        }
-
-        echo "<pre>";
-        echo json_encode(array(
-            "locale" => $locale,
-            "translations" => (array) $translations_menu,
-            "languages" => $languages
-        ),JSON_PRETTY_PRINT);
-        // echo json_encode(array_merge(
-        //     array(
-        //         "en_US" => "English USA"
-        //     ),
-        //     array_map(function ($lang) {
-        //         return $lang["english_name"];
-        //     }, $translations)
-        // ),JSON_PRETTY_PRINT);
-        echo "</pre>";
-        // echo $locale;
-?>
-        <div class="wrap">
-            <h1>Language Manager</h1>
-
-            <form method="post" style="margin-bottom: 2em;">
-                <?php wp_nonce_field('mlmt_add_language', 'mlmt_add_language_nonce'); ?>
-                <table class="form-table">
-                    <tr>
-                        <th><label for="active">Active</label></th>
-                        <td><input name="active" id="active" type="checkbox" checked></td>
-                    </tr>
-                    <tr>
-                        <th><label for="code">Language</label></th>
-                        <th>
-                            <select name="code" id="code" class="custom-select-class">
-                                <option hidden selected value="">
-                                    <?php
-                                    echo esc_html(__("Select new language", mlmt_lang));
-                                    ?>
-                                </option>
-                                <?php
-                                /*
-                                $images = mlmt_url . "/assets/flags";
-                                foreach ($translations_menu as $key => $value) {
-                                    $svg = "$images/$key.svg";
-                                    echo "<option data-icon='$svg'>";
-                                    echo self::get_tranlation_name($key, $value);
-                                    echo "</option>";
-                                }
-                                    */
-                                ?>
-                            </select>
-                            <?php
-
-                            // wp_dropdown_languages(
-                            //     array(
-                            //         'name'                        => 'code',
-                            //         'id'                          => 'code',
-                            //         'selected'                    => '',
-                            //         'show_option_en_us'           => $locale !== "en_US" && !in_array("en_US", $languages_codes),
-                            //         'languages'                   => $list_languages,
-                            //         'translations'                => $translations_menu,
-                            //         'show_available_translations' => current_user_can('install_languages') && wp_can_install_language_pack(),
-                            //     )
-                            // );
-                            ?>
-                        </th>
-                    </tr>
-                </table>
-                <input type="submit" class="button button-primary" value="Add Language">
-            </form>
-
-            <h2>Existing Languages</h2>
-            <table class="widefat fixed striped">
-                <thead>
-                    <tr>
-                        <th>Code</th>
-                        <th>Name</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-
-                    <?php
-                    $name = self::get_tranlation_name($locale);
-                    ?>
-
-                    <td><?php echo esc_html($locale) ?></td>
-                    <td><?php echo esc_html("$name " . __("(Default)", mlmt_lang)); ?></td>
-                    <td><?php echo esc_html(__("Active", mlmt_lang)); ?></td>
-                    <?php
-                    foreach ($languages as $lang) :
-                        if ($lang->code == $locale) {
-                            continue;
-                        }
-                    ?>
-                        <tr>
-                            <td><?php echo esc_html($lang->code); ?></td>
-                            <td>
-                                <?php
-                                $name = $lang->code;
-                                echo self::get_tranlation_name($lang->code);
-                                ?>
-                            </td>
-                            <td><?php echo esc_html($lang->active ? __("Active", mlmt_lang) : __("Deactivated", mlmt_lang)); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-<?php
+        echo '<div id="root"></div>';
     }
 }
