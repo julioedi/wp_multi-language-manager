@@ -73,6 +73,10 @@ class MultiLanguageManagerPlugin
     }
 
     public function wp_get_nav_menu_items($menu_items){
+        
+        if (!$this->got_lang) {
+            return $menu_items;
+        }
         $lang =  get_query_var("lang", null);
         if (!$lang) {
             return $menu_items;
@@ -88,6 +92,9 @@ class MultiLanguageManagerPlugin
 
     public function user_trailingslashit($url)
     {
+        if (!$this->got_lang) {
+            return $url;
+        }
         $lang =  get_query_var("lang", null);
         if (!$lang) {
             return $url;
