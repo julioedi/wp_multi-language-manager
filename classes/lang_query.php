@@ -4,8 +4,30 @@ namespace MultiLanguageManager;
 
 class LangLanguagesTable
 {
+
+
+    public static $is_front_lang = null;
+    public static $is_admin_lang = null;
+    public static $is_lang_init = null;
+
+    public static function set_front_lang(string $lang)
+    {
+        if (!self::$is_lang_init) {
+            self::$is_front_lang = $lang;
+            self::$is_lang_init = true;
+        }
+        return self::$is_front_lang;
+    }
+    public static function get_front_lang()
+    {
+        return self::$is_front_lang;
+    }
+
+    
+
     public static $allLanguages = null;
     public static $allLanguageKeys = array();
+    public static $allLanguageKeysShorts = array();
     public static function get_all_languages()
     {
         if (self::$allLanguages) {
@@ -15,9 +37,29 @@ class LangLanguagesTable
         $table = $wpdb->prefix . LangTable::$prefix . '_languages';
         self::$allLanguages = $wpdb->get_results("SELECT * FROM $table ");
         foreach (self::$allLanguages as $value) {
-            $allLanguageKeys[$value->code] = $value;
+            self::$allLanguageKeys[$value->code] = $value;
+            $shortcode = preg_replace("/^([a-z]+)_.*?$/", "$1", $value->code);
+            if (!isset(self::$allLanguageKeysShorts[$shortcode])) {
+                self::$allLanguageKeysShorts[$shortcode] = $value;
+            }
         }
         return self::$allLanguages;
+    }
+
+    public static function valid_lang($code): string|null
+    {
+        if (!is_string($code)) {
+            return null;
+        }
+        LangLanguagesTable::get_all_languages();
+        if (isset(self::$allLanguageKeys[$code])) {
+            return $code;
+        }
+        if (isset(self::$allLanguageKeysShorts[$code])) {
+            return self::$allLanguageKeysShorts[$code];
+        }
+
+        return null;
     }
 
     public static function language_exists(string $code)
@@ -168,5 +210,19 @@ class LangLanguagesTable
 
 
         return $wpdb->insert($table, $data);
+    }
+
+    public static function add_lang_link($url)
+    {
+        $lang = get_query_var("lang", null);
+        //check if is query lang arg
+        if ($lang) {
+            //check if is valid lang
+            $lang = LangLanguagesTable::valid_lang($lang);
+            if ($lang) {
+                $url = add_query_arg('lang', $lang, $url);
+            }
+        }
+        return $url;
     }
 }

@@ -23,6 +23,7 @@ if (!defined("mlmt_url")) {
 require_once mlmt_dir . "/classes/lang_query.php";
 require_once mlmt_dir . "/classes/adminpage.php";
 require_once mlmt_dir . "/classes/langtable.php";
+require_once mlmt_dir . "/classes/admin_table_cols.php";
 require_once mlmt_dir . "/classes/traits.php";
 require_once mlmt_dir . "/classes/posts.php";
 require_once mlmt_dir . "/classes/postmeta.php";
@@ -67,13 +68,44 @@ class MultiLanguageManagerPlugin
 
         add_action("wp_ajax_{$prefix}_update_admin_language", [LangLanguagesAdmin::class, "update_table_data"]);
         add_action("template_redirect", [$this, "url"]);
-        add_filter("user_trailingslashit", [$this,"user_trailingslashit"]);
-        add_filter("wp_get_nav_menu_items",[$this,"wp_get_nav_menu_items"]);
+        add_filter("user_trailingslashit", [$this, "user_trailingslashit"]);
+        add_filter("wp_get_nav_menu_items", [$this, "wp_get_nav_menu_items"]);
 
+        add_filter("admin_menu", [$this, "admin_menu"]);
     }
 
-    public function wp_get_nav_menu_items($menu_items){
-        
+    public function admin_menu($all)
+    {
+        $lang = isset($_GET["lang"]) ? $_GET["lang"] : null;
+        $lang = LangLanguagesTable::valid_lang($lang);
+        if (!$lang) {
+            return $all;
+        }
+
+        global $menu, $submenu;
+
+        foreach ($menu as $key => $item) {
+            // Solo modificar si no tiene el parámetro lang=es_MX
+            if (strpos($item[2], 'lang=es_MX') === false) {
+                $menu[$key][2] = add_query_arg('lang', 'es_MX', $item[2]);
+            }
+        }
+
+        // Modificar las URLs de los submenús
+        foreach ($submenu as $parent_slug => $submenus) {
+            foreach ($submenus as $key => $submenu_item) {
+                // Solo modificar si no tiene el parámetro lang=es_MX
+                if (strpos($submenu_item[2], 'lang=es_MX') === false) {
+                    $submenu[$parent_slug][$key][2] = add_query_arg('lang', 'es_MX', $submenu_item[2]);
+                }
+            }
+        }
+        return $all;
+    }
+
+    public function wp_get_nav_menu_items($menu_items)
+    {
+
         if (!$this->got_lang) {
             return $menu_items;
         }
@@ -81,9 +113,9 @@ class MultiLanguageManagerPlugin
         if (!$lang) {
             return $menu_items;
         }
-        $lang = explode("_",$lang);
+        $lang = explode("_", $lang);
         foreach ($menu_items as &$item) {
-            if (preg_match("/^\//",$item->url) && !preg_match("/^\/\//",$item->url)) {
+            if (preg_match("/^\//", $item->url) && !preg_match("/^\/\//", $item->url)) {
                 $item->url = "/" . $lang[0] . $item->url;
             }
         }
@@ -115,66 +147,63 @@ class MultiLanguageManagerPlugin
         }
         set_query_var('lang', $this->got_lang);
     }
+
+
     public function parse_request($wp, $class, $extra_query_vars)
     {
-        global $wp_rewrite, $extra_query_vars;
-        if (!isset($_SERVER["REDIRECT_URL"])) {
+        if (is_admin()) {
             return $wp;
         }
-        $_SERVER["REDIRECT_URL"] = preg_replace("/\/+/", "/", $_SERVER["REDIRECT_URL"]);
-        if (isset($_SERVER["REDIRECT_QUERY_STRING"]) && strpos($_SERVER["REDIRECT_QUERY_STRING"], "lang=")) {
-            return $wp;
-        }
-        $regReplace = "/^\/([a-z]{2,4})($|\/(.*?)$|(.*?)$)/i";
-        if (!preg_match($regReplace, $_SERVER["REQUEST_URI"])) {
-            return $wp;
-        }
-        $langCode = preg_replace($regReplace, "$1", $_SERVER["REQUEST_URI"]);
-        $langCode = strtolower($langCode);
-        $langs = LangLanguagesTable::get_all_languages();
+        LangLanguagesTable::get_all_languages();
+        $parsed_url = parse_url($_SERVER["REQUEST_URI"]);
 
-        $currentLang = null;
-        foreach ($langs as $lang) {
-            $code = preg_replace("/^(\w+)_.*?$/i", "$1", $lang->code);
-            if ($code == $langCode) {
-                $currentLang = $lang->code;
-                break;
-            }
-        }
-        if (!$currentLang) {
-            return $wp;
-        }
 
-        /**
-         * Modify the server request before to parse and keep asolutes url like "/es/my-post/" processed as "/my-post/"
-         */
-        if (!isset($_SERVER["QUERY_STRING"])) {
-            $_SERVER["QUERY_STRING"] = "";
-        }
-
-        $_SERVER["QUERY_STRING"] = trim($_SERVER["QUERY_STRING"]);
-        if (!isset($_SERVER["REDIRECT_QUERY_STRING"])) {
-            $_SERVER["REDIRECT_QUERY_STRING"] = "";
-        }
-        if (empty($_SERVER["QUERY_STRING"])) {
-            $_SERVER["QUERY_STRING"] = "lang=" . $currentLang;
-            $_SERVER["REQUEST_URI"] .= "?lang=" . $currentLang;
-            $_SERVER["REDIRECT_QUERY_STRING"] .= "lang=" . $currentLang;
+        $defaultParams = [];
+        if (isset($parsed_url['query'])) {
+            parse_str($parsed_url['query'], $defaultParams);
         } else {
-            $_SERVER["QUERY_STRING"] .= "&lang=" . $currentLang;
-            $_SERVER["REQUEST_URI"] .= "&lang=" . $currentLang;
-            $_SERVER["REDIRECT_QUERY_STRING"] .= "&lang=" . $currentLang;
+            $parsed_url['query'] = &$defaultParams;
         }
 
-        $_SERVER["REQUEST_URI"] = preg_replace($regReplace, "$2", $_SERVER["REQUEST_URI"]);
-        $_SERVER["REDIRECT_URL"] = preg_replace($regReplace, "$2", $_SERVER["REDIRECT_URL"]);
+
+        $keys = array_keys(LangLanguagesTable::$allLanguageKeysShorts);
+        $keys = implode("|", $keys);
+        $preg = "#^\/($keys)(\/|$)#";
+        preg_match_all($preg, $parsed_url['path'], $matches);
+        if (empty($matches[1] && !empty($matches[1][0]))) {
+            return $wp;
+        }
+        global $wp_rewrite, $extra_query_vars;
+        
+        $langCode = $matches[1][0];
+        $defaultParams["lang"] = LangLanguagesTable::$allLanguageKeysShorts[$langCode]->code;
+
+
+        $query_path = preg_replace($preg, "/", $parsed_url['path']);
+        $query_path = preg_replace("/([a-z])$/i",'$1/',$query_path);
+        $query_string = http_build_query($defaultParams);
+        if (!empty($query_string)) {
+            $query_path .= "?$query_string";
+        }
+
+        $_SERVER['QUERY_STRING'] = &$query_string;
+        $_SERVER['REDIRECT_QUERY_STRING'] = &$query_string;
+
+        $_SERVER['REQUEST_URI'] = &$query_path;
+        $_SERVER['REDIRECT_URL'] = &$query_path;
+
+        $_GET = array_merge(
+            $_GET,
+            $defaultParams,
+        );
+        $currentLang = $defaultParams["lang"];
         $this->got_lang = $currentLang;
         $this->langCode = $langCode;
-        $wp_rewrite->add_rule("^{$langCode}/$", 'index.php');
         $wp_rewrite->add_rule("^{$langCode}/(.+)$", 'index.php?pagename=$matches[1]');
         add_filter("locale", function () use ($currentLang) {
             return $currentLang;
         }, 10);
+        LangLanguagesTable::set_front_lang($currentLang);
         return $wp;
     }
 
@@ -196,24 +225,28 @@ class MultiLanguageManagerPlugin
 
     public function register_admin_head($hook_suffix)
     {
-        if ("toplevel_page_mlmt-language-manager" !== $hook_suffix) {
-            return;
+        // wp_enqueue_style("mlmt_admin_global_styles");
+        if (in_array($hook_suffix, ["edit-tags.php", "edit.php"])) {
+            wp_enqueue_style("mlmt_admin", mlmt_url . "/assets/css/admin_tables.css");
         }
-        wp_enqueue_script(
-            "mlmt_admin",
-            // mlmt_url . "/assets/js/mlmt_admin.js",
-            "http://localhost:3000/bundle.js",
-            array(
-                'wp-i18n',
-            ),
-            null,
-            array(
-                "strategy" => "defer"
-            )
-        );
-        wp_enqueue_style("mlmt_admin", mlmt_url . "/assets/css/mlmt_admin.css");
-        $data = LangLanguagesTable::get_languages_flags();
-        wp_localize_script('mlmt_admin', 'mlmtData', $data);
+
+        if ("toplevel_page_mlmt-language-manager" === $hook_suffix) {
+            wp_enqueue_script(
+                "mlmt_admin",
+                // mlmt_url . "/assets/js/mlmt_admin.js",
+                "http://localhost:3000/bundle.js",
+                array(
+                    'wp-i18n',
+                ),
+                null,
+                array(
+                    "strategy" => "defer"
+                )
+            );
+            wp_enqueue_style("mlmt_admin", mlmt_url . "/assets/css/mlmt_admin.css");
+            $data = LangLanguagesTable::get_languages_flags();
+            wp_localize_script('mlmt_admin', 'mlmtData', $data);
+        }
     }
     public function register_admin_page()
     {
