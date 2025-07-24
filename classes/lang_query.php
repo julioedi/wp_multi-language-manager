@@ -8,6 +8,7 @@ class LangLanguagesTable
 
     public static $is_front_lang = null;
     public static $is_admin_lang = null;
+    public static $is_restapi_lang = null;
     public static $is_lang_init = null;
 
     public static function set_front_lang(string $lang)
@@ -18,12 +19,65 @@ class LangLanguagesTable
         }
         return self::$is_front_lang;
     }
+
+    public static function get_restapi_lang()
+    {
+        if (!self::$is_lang_init) {
+            self::$is_lang_init = true;
+            $lang = isset($_GET["lang"]) ? $_GET["lang"] : null;
+            if (!$lang) {
+                if (isset($_COOKIE['lang']) & !empty($_COOKIE['lang'])) {
+                    $lang = $_COOKIE['lang'];
+                }
+            }
+            if (!$lang) {
+                if (isset($_SERVER['HTTP_REFERER'])) {
+                    $referer = $_SERVER['HTTP_REFERER'];
+                    $url_components = parse_url($referer);
+
+                    if (isset($url_components['query'])) {
+                        $query_params = array();
+                        parse_str($url_components['query'], $query_params);
+
+                        if (isset($query_params['lang'])) {
+                            $lang = $query_params['lang'];
+                        }
+                    }
+                }
+            }
+            $lang = LangLanguagesTable::valid_lang($lang);
+            if ($lang) {
+                self::$is_restapi_lang = $lang;
+            }
+        }
+        return self::$is_restapi_lang;
+    }
+
+
+    public static function get_admin_lang()
+    {
+        if (!self::$is_lang_init) {
+            self::$is_lang_init = true;
+            $lang = isset($_GET["lang"]) ? $_GET["lang"] : null;
+            $lang = LangLanguagesTable::valid_lang($lang);
+            if ($lang) {
+                self::$is_admin_lang = $lang;
+            }
+        }
+
+        return self::$is_admin_lang;
+    }
+
+
+
     public static function get_front_lang()
     {
         return self::$is_front_lang;
     }
 
-    
+
+
+
 
     public static $allLanguages = null;
     public static $allLanguageKeys = array();
@@ -38,6 +92,7 @@ class LangLanguagesTable
         self::$allLanguages = $wpdb->get_results("SELECT * FROM $table ");
         foreach (self::$allLanguages as $value) {
             self::$allLanguageKeys[$value->code] = $value;
+            self::$allLanguageKeys[strtolower($value->code)] = $value;
             $shortcode = preg_replace("/^([a-z]+)_.*?$/", "$1", $value->code);
             if (!isset(self::$allLanguageKeysShorts[$shortcode])) {
                 self::$allLanguageKeysShorts[$shortcode] = $value;
@@ -55,6 +110,10 @@ class LangLanguagesTable
         if (isset(self::$allLanguageKeys[$code])) {
             return $code;
         }
+
+        if (isset(self::$allLanguageKeys[strtolower($code)])) {
+            return self::$allLanguageKeys[strtolower($code)]->code;
+        }
         if (isset(self::$allLanguageKeysShorts[$code])) {
             return self::$allLanguageKeysShorts[$code];
         }
@@ -68,6 +127,25 @@ class LangLanguagesTable
         return array(
             "registered" => self::$allLanguageKeys
         );
+    }
+
+
+
+    public static function add_lang_var_link($link, $lang, bool $front = true)
+    {
+        if (!is_string($link)) {
+           return $link;
+        }
+        $lang = self::valid_lang($lang);
+        if (!$lang) {
+            return $link;
+        }
+        if (preg_match("/p\=\d+/", $link) || !$front) {
+            return add_query_arg("lang",$lang,$link);
+        }
+        $lang = explode("_",$lang)[0];
+        return preg_replace("/^(http|https):\/\/(.*?)(\/|$)/","$1://$2/$lang$3",$link);
+
     }
 
 

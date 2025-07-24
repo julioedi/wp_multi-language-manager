@@ -72,7 +72,46 @@ class MultiLanguageManagerPlugin
         add_filter("wp_get_nav_menu_items", [$this, "wp_get_nav_menu_items"]);
 
         add_filter("admin_menu", [$this, "admin_menu"]);
+
+        add_action("enqueue_block_editor_assets", [$this, "register_blocks"]);
+        add_filter("rest_request_before_callbacks", [$this, "rest_request_before_callbacks"], 10, 4);
     }
+
+
+
+    public function rest_request_before_callbacks($response, $handler, $request)
+    {
+        $lang = LangLanguagesTable::get_admin_lang();
+        if (!$lang) {
+            return $response;
+        }
+        $lang = $request->get_param('lang');
+        switch_to_locale($lang);
+        set_query_var("lang", $lang);
+        return $response;
+    }
+
+    public function register_blocks()
+    {
+        $script_handle = "mlmt_blocks_editor";
+        wp_enqueue_script(
+            $script_handle,
+            mlmt_url . "/assets/js/blocks.js",
+            array(
+                'wp-blocks',
+                'wp-element',
+                'wp-i18n',
+                'wp-editor',
+                'wp-components',
+                'wp-data',
+                'wp-codemirror',
+                'wp-api-fetch'
+            ),
+            null,
+            true
+        );
+    }
+
 
     public function admin_menu($all)
     {
@@ -174,13 +213,13 @@ class MultiLanguageManagerPlugin
             return $wp;
         }
         global $wp_rewrite, $extra_query_vars;
-        
+
         $langCode = $matches[1][0];
         $defaultParams["lang"] = LangLanguagesTable::$allLanguageKeysShorts[$langCode]->code;
 
 
         $query_path = preg_replace($preg, "/", $parsed_url['path']);
-        $query_path = preg_replace("/([a-z])$/i",'$1/',$query_path);
+        $query_path = preg_replace("/([a-z])$/i", '$1/', $query_path);
         $query_string = http_build_query($defaultParams);
         if (!empty($query_string)) {
             $query_path .= "?$query_string";

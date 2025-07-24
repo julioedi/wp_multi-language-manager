@@ -4,7 +4,7 @@ namespace MultiLanguageManager;
 
 class LangPosts extends LangTable
 {
-    
+
     use TraitLangPostTypes;
     use TraitLangGetFlags;
     use TraitLangCacheElements;
@@ -17,15 +17,164 @@ class LangPosts extends LangTable
     {
         self::set_cached_name("posts");
         add_action('delete_post', [$this, 'delete_translations']);
-        // add_action("the_post", [$this, "get_single_translation"]);
+        add_action("the_post", [$this, "get_single_translation"]);
         add_action('template_redirect', [$this, "template_redirect"]);
-        // add_action("posts_results", [$this, "posts_results"], 10, 2);
+        add_action("posts_results", [$this, "posts_results"], 10, 2);
         add_action("admin_init", [$this, "admin_init"]);
 
         add_action("posts_results", [$this, "query_loop_start"], 10, 2);
         add_filter('the_posts', [$this, 'filter_posts'], 10, 2);
 
+
+
+        add_action("replace_editor", [$this, "gutemberg_change_posts"], 10, 2);
+
+
+        add_action("pre_post_update", [$this, "pre_post_update"], 10, 2);
+
+        add_filter("block_editor_rest_api_preload_paths", [$this, "block_editor_rest_api_preload_paths"], 0);
+
+        add_filter("rest_prepare_autosave", [$this, "rest_prepare_autosave"], 10, 3);
+        add_filter("wp_insert_post_data", [$this, "wp_insert_post_data"], 10, 4);
+
+        add_action("rest_prepare_post", [$this, "rest_prepare_post"], 10, 3);
+
         new LangLanguagesAdminColumns("posts", "post");
+    }
+
+
+    public function rest_prepare_post($response, $post, $request)
+    {
+        $lang = get_query_var("lang", null);
+        if (!$lang) {
+            $lang = LangLanguagesTable::get_admin_lang();
+        }
+        $lang = LangLanguagesTable::valid_lang($lang);
+        if ($lang) {
+            if (isset($response->data['guid']['rendered']) && is_string($response->data['guid']['rendered'])) {
+                $response->data['guid']['rendered'] = add_query_arg("lang", $lang, $response->data['guid']['rendered']);
+            }
+
+            if (isset($response->data['link']) && is_string($response->data['link'])) {
+                $response->data['link'] = LangLanguagesTable::add_lang_var_link($response->data['link'], $lang);
+            }
+            $links = $response->get_links();
+            foreach ($links as $linkKey => &$_links) {
+                foreach ($_links as $key => $value) {
+                    if (isset($value["href"])) {
+                        $_links[$key]["href"] = LangLanguagesTable::add_lang_var_link($value["href"], $lang, false);
+                    }
+                }
+                $response->remove_link($linkKey);
+            }
+            $response->add_links($links);
+        }
+        return $response;
+    }
+
+
+    public function wp_insert_post_data($data, $postarr, $unsanitized_postarr, $update)
+    {
+        $lang = get_query_var("lang", null);
+        if (!$lang) {
+            $lang = LangLanguagesTable::get_admin_lang();
+        }
+        $lang = LangLanguagesTable::valid_lang($lang);
+        if (!$lang) {
+            return $data;
+        }
+        return $data;
+    }
+
+
+    public function rest_prepare_autosave($response, $autosave, $request)
+    {
+        if (!isset($autosave->parent)) {
+            return $response;
+        }
+        add_filter("wp_insert_post_data", [$this, "post"]);
+        $dataRequest = print_r($request, true);
+        $myfile = fopen(ABSPATH . "/testfile.txt", "w");
+        fwrite($myfile, json_encode([$_SERVER, $autosave], JSON_PRETTY_PRINT) . $dataRequest);
+        fclose($myfile);
+
+        return $response;
+    }
+
+
+    public function modifyPath(mixed $data)
+    {
+        $lang = LangLanguagesTable::get_admin_lang();
+        if (!$lang) {
+            return $data;
+        }
+
+        if (is_string($data)) {
+            // Solo modificar si contiene "/wp/" y no tiene ya el lang
+            if (preg_match("/\/wp\//i", $data) && strpos($data, 'lang=') === false) {
+                // if (!preg_match("/\/wp\/v\d+\/posts\/\d+/i", $data)) {
+                $data = add_query_arg("lang", $lang, $data);   # code...
+                // }
+
+                echo "<pre>$data</pre>";
+            }
+            return $data;
+        }
+
+        if (is_array($data)) {
+            foreach ($data as $key => $value) {
+                $data[$key] = $this->modifyPath($value);
+            }
+            return $data;
+        }
+
+        // Ignorar si no es string ni array
+        return $data;
+    }
+
+
+
+    public function block_editor_rest_api_preload_paths($preload_paths)
+    {
+        $lang = LangLanguagesTable::get_admin_lang();
+        if ($lang) {
+            switch_to_locale($lang);
+            $preload_paths = $this->modifyPath($preload_paths);
+        }
+        return $preload_paths;
+    }
+
+    public function pre_post_update($post_id, $data)
+    {
+        return $post_id;
+    }
+
+
+    public $single_translation = null;
+
+
+    public function gutemberg_change_posts($val)
+    {
+
+        if ($this->single_translation == true) return $val;
+
+
+        global $pagenow;
+        if (!in_array($pagenow, ["post.php"])) return $val;
+        $lang = LangLanguagesTable::get_admin_lang();
+        global $post;
+        if (!$lang || !$post) {
+            return $lang;
+        }
+
+        $this->single_translation = true;
+        $translation = $this->get_translation_post($post->ID, $lang);
+        if ($translation) {
+            $post = new \WP_Post($translation);
+            $GLOBALS["post"] = $translation;
+            self::wp_cached_element($post->ID, $post);
+        }
+        return $val;
     }
 
     public function filter_posts($posts, $query)
@@ -48,11 +197,10 @@ class LangPosts extends LangTable
             if (!empty($ids)) {
                 $results = $this->get_translation_ids($ids);
                 if (is_array($results) && !empty($results)) {
-                    global $wp_object_cache;
                     foreach ($results as $value) {
                         if (isset($PreData["post_{$value->ID}"])) {
                             $single = new \WP_Post($value);
-                            self::wp_cached_element($value->ID,$single);
+                            self::wp_cached_element($value->ID, $single);
                             $posts[$PreData["post_{$value->ID}"]] = new \WP_Post($value);
                         }
                     }
@@ -89,15 +237,21 @@ class LangPosts extends LangTable
 
     public function admin_init()
     {
-        if (is_admin()) {
-            $lang = isset($_GET["lang"]) ? $_GET["lang"] : null;
-        } else {
-            $lang = get_query_var("lang", null);
+        if (!is_admin()) {
+            return;
         }
+        $lang = isset($_GET["lang"]) ? $_GET["lang"] : null;
 
         $lang = LangLanguagesTable::valid_lang($lang);
         if (!$lang) {
             return;
+        }
+        global $pagenow;
+        if ($pagenow === "post.php") {
+            // echo "<pre>";
+            // print_r($GLOBALS);
+            // echo "</pre>";
+            // die();
         }
     }
 
@@ -196,7 +350,7 @@ class LangPosts extends LangTable
         );
     }
 
-
+    public $force_lang = true;
     public function get_single_translation()
     {
         global $wpdb, $post;
@@ -221,8 +375,12 @@ class LangPosts extends LangTable
 
 
         if ($translated) {
-            $post = &$translated;
+            if (isset($translated->guid)) {
+                $translated->guid = add_query_arg("lang", $lang, $translated->guid);
+            }
+            $post = $translated;
             $GLOBALS["post"] = &$translated;
+            self::wp_cached_element($post->ID, $post);
             return;
         }
 
